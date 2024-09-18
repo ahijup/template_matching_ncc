@@ -1,5 +1,6 @@
 #include "ncc_sum.h"
 #include <stdio.h>
+#include <math.h>
 
 // calculate integral image
 void integral_image(struct ImageData* src, struct ImageData* dst)
@@ -104,39 +105,75 @@ void normed_cross_correlation_integral(struct ImageData* pattern, struct ImageDa
 		}
 	}
 
+	// pattern_std = sqrtf(pattern_std);
+
 	float** pattern_diff_map_2d = (float**)malloc(sizeof(float*) * pattern->h);
 	for (int i = 0; i < pattern->h; i++)
 	{
 		pattern_diff_map_2d[i] = pattern_diff_map + i * pattern->w;
 	}
-	int y;
-#pragma omp parallel for shared(t, p, r, pattern_diff_map)
-	for (y = 0; y < result->h; y++)
+
+	if (fabs(pattern_std) > 1e-8f)
 	{
-		float* rr = r[y];
-		for (int x = 0; x < result->w; x++)
+		int y;
+#pragma omp parallel for shared(t, p, r, pattern_diff_map)
+		for (y = 0; y < result->h; y++)
 		{
-			float sum_target = GET_SUM(x, y, pattern->w, pattern->h);
-			float target_mean = sum_target / (pattern->w * pattern->h);
-
-			float pattern_std = 0;
-			float target_std = 0;
-
-			float sum_crossed = 0;
-
-			for (int j = 0; j < pattern->h; ++j)
+			float* rr = r[y];
+			for (int x = 0; x < result->w; x++)
 			{
-				float* p_d_ptr = pattern_diff_map_2d[j];
-				for (int i = 0; i < pattern->w; ++i)
+				float sum_target = GET_SUM(x, y, pattern->w, pattern->h);
+				float target_mean = sum_target / (pattern->w * pattern->h);
+
+				// float pattern_std = 0;
+				float target_std = 0;
+
+				float sum_crossed = 0;
+
+				for (int j = 0; j < pattern->h; ++j)
 				{
-					float p_d = p_d_ptr[i];
-					float t_d = tp[y + j][x + i] - target_mean;
-					pattern_std += (p_d) * (p_d);
-					target_std += (t_d) * (t_d);
-					sum_crossed += (p_d) * (t_d);
+					float* p_d_ptr = pattern_diff_map_2d[j];
+					for (int i = 0; i < pattern->w; ++i)
+					{
+						float p_d = p_d_ptr[i];
+						float t_d = tp[y + j][x + i] - target_mean;
+						// pattern_std += (p_d) * (p_d);
+						target_std += (t_d) * (t_d);
+						sum_crossed += (p_d) * (t_d);
+					}
 				}
+
+				if (fabs(target_std) < 1e-8)
+				{
+					rr[x] = 0;
+				}
+				else
+				{
+					// pattern_std = sqrtf(pattern_std);
+					// target_std = sqrtf(target_std);
+
+					float den = (float)sqrt(pattern_std * target_std);
+
+					// normed cross correlation
+					rr[x] = sum_crossed / den;
+				}
+
+
 			}
-			rr[x] = sum_crossed / sqrtf(pattern_std * target_std);
+		}
+	}
+	else
+	{
+		// if pattern_norm is too small, return
+		// to avoid division by zero
+		// set the result to zero
+		for (int j = 0; j < result->h; j++)
+		{
+			float* rrow = r[j];
+			for (int i = 0; i < result->w; i++)
+			{
+				rrow[i] = 0;
+			}
 		}
 	}
 

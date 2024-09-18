@@ -58,7 +58,7 @@ int main()
 	struct ImageData target_r, target_g, target_b;
 	split_3channels(&target, &target_r, &target_g, &target_b);
 
-	test_fft2d(&target_r);
+	// test_fft2d(&target_r);
 
 	write_image("pattern_r.bmp", &pattern_r);
 	write_image("target_r.bmp", &target_r);
@@ -69,6 +69,8 @@ int main()
 
 	LARGE_INTEGER frequency; // Stores the frequency of the high-resolution performance counter
 	LARGE_INTEGER tic, toc; // Variables to store the start and end times
+	int x, y;
+	float max_value;
 
 	// Get the frequency of the performance counter
 	QueryPerformanceFrequency(&frequency);
@@ -82,8 +84,7 @@ int main()
 
 	printf("Elapsed time[original]: %f ms\n", (1000.0f) * (toc.QuadPart - tic.QuadPart) / frequency.QuadPart);
 
-	int x, y;
-	float max_value;
+	
 	find_max_value_index(&result, &x, &y, &max_value);
 	printf("Red channel: x= %d, y= %d, max_value= %f\n", x, y, max_value);
 
@@ -120,8 +121,8 @@ int main()
 	free_image(&target_g);
 	free_image(&target_b);
 
-	free_image(&result);
-	free_image(&result_i);
+	/*free_image(&result);
+	free_image(&result_i);*/
 	free_image(&result_fft);
 	system("pause");
 	return 0;

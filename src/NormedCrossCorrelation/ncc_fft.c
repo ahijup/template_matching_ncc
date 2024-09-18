@@ -3,9 +3,15 @@
 #include <math.h>
 #include <windows.h>
 
+//#define FFT_DBL_TYPE double
+//#define SQRT(a) sqrt((a))
+
+ #define FFT_DBL_TYPE float
+ #define SQRT(a) sqrtf((a))
+
 typedef struct {
-	float real;
-	float imag;
+	FFT_DBL_TYPE real;
+	FFT_DBL_TYPE imag;
 } Complex;
 
 int get_opt_fft_size(int n)
@@ -19,16 +25,14 @@ int get_opt_fft_size(int n)
 }
 
 // from: https://github.com/ttang10/FFT_2D_CONVOLUTION/blob/master/source%20codes/fft.c
-
-static Complex ctmp;
-#define C_SWAP(a,b) {ctmp=(a);(a)=(b);(b)=ctmp;}
-
 void c_fft1d(Complex* r, int      n, int      isign)
 {
 	int     m, i, i1, j, k, i2, l, l1, l2;
-	float   c1, c2, z;
+	FFT_DBL_TYPE   c1, c2, z;
 	Complex t, u;
 
+	Complex ctmp;
+#define C_SWAP(a,b) {ctmp=(a);(a)=(b);(b)=ctmp;}
 	if (isign == 0) return;
 
 	/* Do the bit reversal */
@@ -78,10 +82,10 @@ void c_fft1d(Complex* r, int      n, int      isign)
 			u.imag = u.real * c2 + u.imag * c1;
 			u.real = z;
 		}
-		c2 = sqrtf((1.0f - c1) / 2.0f);
+		c2 = SQRT((1.0 - c1) / 2.0);
 		if (isign == -1) /* FWD FFT */
 			c2 = -c2;
-		c1 = sqrtf((1.0f + c1) / 2.0f);
+		c1 = SQRT((1.0 + c1) / 2.0);
 	}
 
 	/* Scaling for inverse transform */
@@ -91,6 +95,7 @@ void c_fft1d(Complex* r, int      n, int      isign)
 			r[i].imag /= n;
 		}
 	}
+#undef C_SWAP
 }
 
 // Function to compute 1D FFT (Cooley-Tukey)
@@ -100,7 +105,7 @@ void fft1D(Complex* X, int N) {
 
 void transpose_complex_matrix(struct ImageData* src, struct ImageData* dst)
 {
-	int i, j;
+	int i;
 	Complex** s2d = (Complex**)malloc(sizeof(Complex*) * src->h);
 	for (i = 0; i < src->h; i++)
 	{
@@ -115,11 +120,11 @@ void transpose_complex_matrix(struct ImageData* src, struct ImageData* dst)
 
 	}
 
-//#pragma omp parallel for shared(s2d, d2d)
+#pragma omp parallel for shared(s2d, d2d)
 	for (i = 0; i < dst->h; i++)
 	{
 		Complex* drow = d2d[i];
-		for (j = 0; j < dst->w; j++)
+		for (int j = 0; j < dst->w; j++)
 		{
 			drow[j] = s2d[j][i];
 		}
@@ -152,8 +157,8 @@ void fft2d(struct ImageData* src, struct ImageData* dst)
 		d2d[i] = (Complex*)(dst->data + i * dst->w * sizeof(Complex));
 	}
 	
-	int i;
-#pragma omp parallel for shared(s2d, d2d)
+	int i = 0;
+#pragma omp parallel for shared(s2d, d2d) firstprivate(i)
 		// fft forward without any library
 	for (i = 0; i < src->h; i++)
 	{
@@ -168,7 +173,7 @@ void fft2d(struct ImageData* src, struct ImageData* dst)
 		fft1D(row, dst->w);
 	}
 
-	for (int i = src->h; i < dst->h; i++)
+	for (i = src->h; i < dst->h; i++)
 	{
 		Complex* row = d2d[i];
 		memset(row, 0x00, sizeof(Complex) * dst->w);
@@ -187,7 +192,7 @@ void fft2d(struct ImageData* src, struct ImageData* dst)
 		d2d_transposed[i] = (Complex*)(dst_transposed.data + i * dst_transposed.w * sizeof(Complex));
 	}
 
-#pragma omp parallel for shared(d2d_transposed)
+#pragma omp parallel for shared(d2d_transposed) private(i)
 	for (i = 0; i < dst_transposed.h; i++)
 	{
 		Complex* row = d2d_transposed[i];
@@ -231,8 +236,8 @@ void ifft2d(struct ImageData* src, struct ImageData* dst)
 		d2d[i] = (Complex*)(dst->data + i * dst->w * sizeof(Complex));
 	}
 	
-	int i;
-#pragma omp parallel for shared(s2d, d2d)
+	int i = 0;
+#pragma omp parallel for shared(s2d, d2d) firstprivate(i)
 			// fft forward without any library
 	for (i = 0; i < src->h; i++)
 	{
@@ -261,7 +266,7 @@ void ifft2d(struct ImageData* src, struct ImageData* dst)
 		d2d_transposed[i] = (Complex*)(dst_transposed.data + i * dst_transposed.w * sizeof(Complex));
 	}
 
-#pragma omp parallel for shared(d2d_transposed)
+#pragma omp parallel for shared(d2d_transposed) private(i)
 	for (i = 0; i < dst_transposed.h; i++)
 	{
 		Complex* row = d2d_transposed[i];
@@ -366,7 +371,7 @@ void complex_mul_fft(struct ImageData* pattern_fft, struct ImageData* target_fft
 		r2d[i] = (Complex*)(result->data + i * result->w * sizeof(Complex));
 	}
 	int i;
-#pragma omp parallel for shared(p2d, t2d)
+// #pragma omp parallel for shared(p2d, t2d)
 	for (i = 0; i < h; i++)
 	{
 		Complex* t_row = t2d[i];
@@ -394,7 +399,7 @@ void complex_mul_fft(struct ImageData* pattern_fft, struct ImageData* target_fft
 void get_real_part_fft(struct ImageData* src, struct ImageData* dst)
 {
 	dst->ch = 1;
-	dst->data = (unsigned char*)alloc_data(dst->w * dst->h * 4);
+	dst->data = (unsigned char*)alloc_data(dst->w * dst->h * sizeof(FFT_DBL_TYPE));
 
 	Complex** s2d = (Complex**)malloc(sizeof(Complex*) * src->h);
 	for (int i = 0; i < src->h; i++)
@@ -402,19 +407,19 @@ void get_real_part_fft(struct ImageData* src, struct ImageData* dst)
 		s2d[i] = (Complex*)(src->data + i * src->w * sizeof(Complex));
 	}
 
-	float** d2d = (float**)malloc(sizeof(float*) * dst->h);
+	FFT_DBL_TYPE** d2d = (FFT_DBL_TYPE**)malloc(sizeof(FFT_DBL_TYPE*) * dst->h);
 
 	for (int i = 0; i < dst->h; i++)
 	{
-		d2d[i] = (float*)(dst->data + i * dst->w * 4);
+		d2d[i] = (FFT_DBL_TYPE*)(dst->data + i * dst->w * sizeof(FFT_DBL_TYPE));
 	}
 
 	int i;
-#pragma omp parallel for shared(s2d, d2d)
+// #pragma omp parallel for shared(s2d, d2d)
 	for (i = 0; i < dst->h; i++)
 	{
 		Complex* row = s2d[i];
-		float* drow = d2d[i];
+		FFT_DBL_TYPE* drow = d2d[i];
 		for (int j = 0; j < dst->w; j++)
 		{
 			drow[j] = row[j].real;
@@ -426,10 +431,10 @@ void get_real_part_fft(struct ImageData* src, struct ImageData* dst)
 
 }
 
-void abs_fft(struct ImageData* src, struct ImageData* dst)
+void fabs_fft(struct ImageData* src, struct ImageData* dst)
 {
 	dst->ch = 1;
-	dst->data = (unsigned char*)alloc_data(dst->w * dst->h * 4);
+	dst->data = (unsigned char*)alloc_data(dst->w * dst->h * sizeof(FFT_DBL_TYPE));
 
 	Complex** s2d = (Complex**)malloc(sizeof(Complex*) * src->h);
 	for (int i = 0; i < src->h; i++)
@@ -437,21 +442,21 @@ void abs_fft(struct ImageData* src, struct ImageData* dst)
 		s2d[i] = (Complex*)(src->data + i * src->w * sizeof(Complex));
 	}
 
-	float** d2d = (float**)malloc(sizeof(float*) * dst->h);
+	FFT_DBL_TYPE** d2d = (FFT_DBL_TYPE**)malloc(sizeof(FFT_DBL_TYPE*) * dst->h);
 
 	for (int i = 0; i < dst->h; i++)
 	{
-		d2d[i] = (float*)(dst->data + i * dst->w * 4);
+		d2d[i] = (FFT_DBL_TYPE*)(dst->data + i * dst->w * sizeof(FFT_DBL_TYPE));
 	}
 
 	// #pragma omp parallel for shared(s2d, d2d)
 	for (int i = 0; i < dst->h; i++)
 	{
 		Complex* row = s2d[i];
-		float* drow = d2d[i];
+		double* drow = d2d[i];
 		for (int j = 0; j < dst->w; j++)
 		{
-			drow[j] = sqrtf(row[j].real * row[j].real + row[j].imag * row[j].imag);
+			drow[j] = sqrt(row[j].real * row[j].real + row[j].imag * row[j].imag);
 		}
 	}
 
@@ -468,7 +473,7 @@ void cross_correlation_fft(struct ImageData* pattern, struct ImageData* target, 
 	result->ch = 1;
 
 	// allocate memory for result
-	result->data = (unsigned char*)alloc_data(result->w * result->h * 4);
+	result->data = (unsigned char*)alloc_data(result->w * result->h * sizeof(double));
 
 	struct ImageData target_fft;
 	fft2d(target, &target_fft);
@@ -514,34 +519,35 @@ void image_sum_table(struct  ImageData* src, struct ImageData* sum, struct Image
 	sum->w = src->w + 1;
 	sum->h = src->h + 1;
 	sum->ch = 1;
-	sum->data = (unsigned char*)alloc_data(sum->w * sum->h * 4);
+	sum->data = (unsigned char*)alloc_data(sum->w * sum->h * sizeof(double));
 
 	sqSum->w = src->w + 1;
 	sqSum->h = src->h + 1;
 	sqSum->ch = 1;
-	sqSum->data = (unsigned char*)alloc_data(sqSum->w * sqSum->h * 4);
+	sqSum->data = (unsigned char*)alloc_data(sqSum->w * sqSum->h * sizeof(double));
 
 	unsigned char** s = (unsigned char**)malloc(sizeof(unsigned char*) * src->h);
 	for (int i = 0; i < src->h; i++)
 	{
 		s[i] = (unsigned char*)(src->data + i * src->w);
 	}
-	float** sum2d = (float**)malloc(sizeof(float*) * sum->h);
+
+	double** sum2d = (double**)malloc(sizeof(double*) * sum->h);
 	for (int i = 0; i < sum->h; i++)
 	{
-		sum2d[i] = (float*)(sum->data + i * sum->w * 4);
+		sum2d[i] = (double*)(sum->data + i * sum->w * sizeof(double));
 	}
-	float** sqSum2d = (float**)malloc(sizeof(float*) * sqSum->h);
+	double** sqSum2d = (double**)malloc(sizeof(double*) * sqSum->h);
 	for (int i = 0; i < sqSum->h; i++)
 	{
-		sqSum2d[i] = (float*)(sqSum->data + i * sqSum->w * 4);
+		sqSum2d[i] = (double*)(sqSum->data + i * sqSum->w * sizeof(double));
 	}
 
 	// calculate integral image
 	for (int j = 0; j < sum->h; j++)
 	{
-		float* sum_row = sum2d[j];
-		float* sqSum_row = sqSum2d[j];
+		double* sum_row = sum2d[j];
+		double* sqSum_row = sqSum2d[j];
 		for (int i = 0; i < sum->w; i++)
 		{
 			if (i == 0 || j == 0)
@@ -562,7 +568,7 @@ void image_sum_table(struct  ImageData* src, struct ImageData* sum, struct Image
 	free(sqSum2d);
 }
 
-void image_mean(struct ImageData* src, float* mean, float* sdv)
+void image_mean(struct ImageData* src, double* mean, double* sdv)
 {
 	unsigned char** s = (unsigned char**)malloc(sizeof(unsigned char*) * src->h);
 	for (int i = 0; i < src->h; i++)
@@ -570,8 +576,8 @@ void image_mean(struct ImageData* src, float* mean, float* sdv)
 		s[i] = (unsigned char*)(src->data + i * src->w);
 	}
 
-	float sum = 0;
-	float sum_sq = 0;
+	double sum = 0;
+	double sum_sq = 0;
 	for (int j = 0; j < src->h; j++)
 	{
 		unsigned char* srow = s[j];
@@ -583,7 +589,7 @@ void image_mean(struct ImageData* src, float* mean, float* sdv)
 	}
 
 	*mean = sum / (src->w * src->h);
-	*sdv = sqrtf(sum_sq / (src->w * src->h) - (*mean) * (*mean));
+	*sdv = sqrt(sum_sq / (src->w * src->h) - (*mean) * (*mean));
 }
 
 
@@ -603,16 +609,16 @@ void test_image_sum()
 	struct ImageData integral, integral_sq;
 	image_sum_table(&img, &integral, &integral_sq);
 
-	float** t = (float**)malloc(sizeof(float*) * integral.h);
+	double** t = (double**)malloc(sizeof(double*) * integral.h);
 	for (int i = 0; i < integral.h; i++)
 	{
-		t[i] = (float*)(integral.data + i * integral.w * 4);
+		t[i] = (double*)(integral.data + i * integral.w * sizeof(double));
 	}
 
-	float** t_sq = (float**)malloc(sizeof(float*) * integral_sq.h);
+	double** t_sq = (double**)malloc(sizeof(double*) * integral_sq.h);
 	for (int i = 0; i < integral_sq.h; i++)
 	{
-		t_sq[i] = (float*)(integral_sq.data + i * integral_sq.w * 4);
+		t_sq[i] = (double*)(integral_sq.data + i * integral_sq.w * sizeof(double));
 	}
 
 #define GET_SUM(x, y, w, h) (t[(y + h)][(x + w)] + t[(y)][(x)] - t[(y + h)][(x)] - t[(y)][(x + w)])
@@ -621,10 +627,10 @@ void test_image_sum()
 	printf("Integral image\n");
 	for (int j = 0; j < integral.h; j++)
 	{
-		float* p = (float*)(integral.data + j * integral.w * 4);
+		double* p = (double*)(integral.data + j * integral.w * sizeof(double));
 		for (int i = 0; i < integral.w; i++)
 		{
-			printf("%f ", p[i]);
+			printf("%lf ", p[i]);
 		}
 		printf("\n");
 	}
@@ -632,20 +638,20 @@ void test_image_sum()
 	printf("Integral image square\n");
 	for (int j = 0; j < integral_sq.h; j++)
 	{
-		float* p = (float*)(integral_sq.data + j * integral_sq.w * 4);
+		double* p = (double*)(integral_sq.data + j * integral_sq.w * sizeof(double));
 		for (int i = 0; i < integral_sq.w; i++)
 		{
-			printf("%f ", p[i]);
+			printf("%lf ", p[i]);
 		}
 		printf("\n");
 	}
 
 
-	printf("sum1: %f\n", GET_SUM(1, 0, 3, 3));
-	printf("sum2: %f\n", GET_SUM(0, 0, 5, 5));
+	printf("sum1: %lf\n", GET_SUM(1, 0, 3, 3));
+	printf("sum2: %lf\n", GET_SUM(0, 0, 5, 5));
 
-	printf("sq sum1: %f\n", GET_SQ_SUM(1, 0, 3, 3));
-	printf("sq sum2: %f\n", GET_SQ_SUM(0, 0, 5, 5));
+	printf("sq sum1: %lf\n", GET_SQ_SUM(1, 0, 3, 3));
+	printf("sq sum2: %lf\n", GET_SQ_SUM(0, 0, 5, 5));
 
 
 	free(t);
@@ -664,27 +670,38 @@ void test_image_sum()
 
 void normed_cross_correlation_fft(struct ImageData* pattern, struct ImageData* target, struct ImageData* result)
 {
-	cross_correlation_fft(pattern, target, result);
+	struct ImageData result_cc;
+	cross_correlation_fft(pattern, target, &result_cc);
 
 	struct ImageData target_integral, target_integral_sq;
 	image_sum_table(target, &target_integral, &target_integral_sq);
 
-	float pattern_mean, pattern_sdv;
+	double pattern_mean, pattern_sdv;
 	image_mean(pattern, &pattern_mean, &pattern_sdv);
-	float pattern_sum = pattern_mean * pattern->w * pattern->h;
-	float pattern_norm = pattern_sdv / sqrtf(1.0f / (pattern->w * pattern->h));
+	double pattern_sum = pattern_mean * pattern->w * pattern->h;
+	// sdv = sqrt(sum(x - mean)^2 / n)
+	// sdv^2 = sum(x - mean)^2 / n
+	// sdv^2 * n = sum(x - mean)^2
+	// sum(x - mean)^2 = sqrt(sdv^2 * n)
+	double pattern_norm_2 = pattern_sdv / sqrt(1.0 / (pattern->w * pattern->h));
+	double pattern_norm = sqrt(pattern_sdv * pattern_sdv * pattern->w * pattern->h);
 
 
-	float** targetSum2d = (float**)malloc(sizeof(float*) * target_integral.h);
-	float** targetSqSum2d = (float**)malloc(sizeof(float*) * target_integral.h);
+	double** targetSum2d = (double**)malloc(sizeof(double*) * target_integral.h);
+	double** targetSqSum2d = (double**)malloc(sizeof(double*) * target_integral.h);
 	for (int i = 0; i < target_integral.h; i++)
 	{
-		targetSum2d[i] = (float*)(target_integral.data + i * target_integral.w * 4);
-		targetSqSum2d[i] = (float*)(target_integral_sq.data + i * target_integral_sq.w * 4);
+		targetSum2d[i] = (double*)(target_integral.data + i * target_integral.w * sizeof(double));
+		targetSqSum2d[i] = (double*)(target_integral_sq.data + i * target_integral_sq.w * sizeof(double));
 	}
 #define GET_SUM(x, y, w, h) (targetSum2d[(y + h)][(x + w)] + targetSum2d[(y)][(x)] - targetSum2d[(y + h)][(x)] - targetSum2d[(y)][(x + w)])
 #define GET_SQ_SUM(x, y, w, h) (targetSqSum2d[(y + h)][(x + w)] + targetSqSum2d[(y)][(x)] - targetSqSum2d[(y + h)][(x)] - targetSqSum2d[(y)][(x + w)])
 
+
+	result->w = result_cc.w;
+	result->h = result_cc.h;
+	result->ch = 1;
+	result->data = (unsigned char*)alloc_data(result->w * result->h * sizeof(float));
 
 	float** r2d = (float**)malloc(sizeof(float*) * result->h);
 	for (int i = 0; i < result->h; i++)
@@ -692,31 +709,68 @@ void normed_cross_correlation_fft(struct ImageData* pattern, struct ImageData* t
 		r2d[i] = (float*)(result->data + i * result->w * 4);
 	}
 
-	// #pragma omp parallel for shared(r2d, targetSum2d, targetSqSum2d)
-	for (int j = 0; j < result->h; j++)
+	FFT_DBL_TYPE** resultcc_2d = (FFT_DBL_TYPE**)malloc(sizeof(FFT_DBL_TYPE*) * result_cc.h);
+	for (int i = 0; i < result_cc.h; i++)
 	{
-		float* rrow = r2d[j];
-		for (int i = 0; i < result->w; i++)
+		resultcc_2d[i] = (FFT_DBL_TYPE*)(result_cc.data + i * result_cc.w * sizeof(FFT_DBL_TYPE));
+	}
+
+
+	if (fabs(pattern_norm) > 1e-8f)
+	{
+		int j;
+#pragma omp parallel for shared(r2d, targetSum2d, targetSqSum2d) private(j)
+		for (j = 0; j < result->h; j++)
 		{
-			float num = rrow[i];
-			float sum = GET_SUM(i, j, pattern->w, pattern->h);
-			float sqSum = GET_SQ_SUM(i, j, pattern->w, pattern->h);
-			num -= sum * pattern_mean;
+			float* rrow = r2d[j];
+			FFT_DBL_TYPE* ccrow = resultcc_2d[j];
 
-			float wndMean = sum * sum / (pattern->w * pattern->h);
-			float wndSum2 = sqSum;
+			for (int i = 0; i < result->w; i++)
+			{
+				FFT_DBL_TYPE num = ccrow[i];
+				double sum = GET_SUM(i, j, pattern->w, pattern->h);
+				double sqSum = GET_SQ_SUM(i, j, pattern->w, pattern->h);
+				num -= sum * pattern_mean;
 
-			float diff2 = MAX(wndSum2 - wndMean, 0.0f);
-			float den = sqrtf(diff2) * pattern_norm;
-			rrow[i] = num / den;
+				double wndMean = sum * sum / (pattern->w * pattern->h);
+				double wndSum2 = sqSum;
+
+				double diff2 = MAX(wndSum2 - wndMean, 0.0);
+
+				if (fabs(diff2) < 1e-8)
+				{
+					rrow[i] = 0;
+					continue;
+				}
+				double den = (sqrt(diff2) * pattern_norm);
+				double num2 = num / den;
+
+				rrow[i] = (float)num2;
+			}
+		}
+	}
+	else
+	{
+		// if pattern_norm is too small, return
+		// to avoid division by zero
+		// set the result to zero
+		for (int j = 0; j < result->h; j++)
+		{
+			float* rrow = r2d[j];
+			for (int i = 0; i < result->w; i++)
+			{
+				rrow[i] = 0;
+			}
 		}
 	}
 
 	free(targetSum2d);
 	free(targetSqSum2d);
 	free(r2d);
+	free(resultcc_2d);
 	free_image(&target_integral);
 	free_image(&target_integral_sq);
+	free_image(&result_cc);
 #undef GET_SUM
 #undef GET_SQ_SUM
 }

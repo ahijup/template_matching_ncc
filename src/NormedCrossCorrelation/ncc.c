@@ -1,5 +1,6 @@
 #include "ncc.h"
 #include <omp.h>
+#include <math.h>
 
 // original version
 void normed_cross_correlation(struct ImageData* pattern, struct ImageData* target, struct ImageData* result)
@@ -59,49 +60,76 @@ void normed_cross_correlation(struct ImageData* pattern, struct ImageData* targe
 		pattern_diff_map_2d[i] = pattern_diff_map + i * pattern->w;
 	}
 
-	int y;
-	// calculate normed cross correlation
-#pragma omp parallel for shared(t, p, r, pattern_diff_map)
-	for (y = 0; y < result->h; y++)
+	if (fabs(pattern_std) > 1e-8f)
 	{
-		float* rr = r[y];
-		for (int x = 0; x < result->w; x++)
+		int y;
+		// calculate normed cross correlation
+#pragma omp parallel for shared(t, p, r, pattern_diff_map)
+		for (y = 0; y < result->h; y++)
 		{
-			float sum_target = 0;
-			for (int j = 0; j < pattern->h; j++)
+			float* rr = r[y];
+			for (int x = 0; x < result->w; x++)
 			{
-				for (int i = 0; i < pattern->w; i++)
+				float sum_target = 0;
+				for (int j = 0; j < pattern->h; j++)
 				{
-					sum_target += (t[y + j][x + i]);
+					for (int i = 0; i < pattern->w; i++)
+					{
+						sum_target += (t[y + j][x + i]);
+					}
 				}
+
+				float target_mean = sum_target / (pattern->w * pattern->h);
+
+
+				// float pattern_std = 0;
+				float target_std = 0;
+
+				float sum_crossed = 0;
+
+				for (int j = 0; j < pattern->h; ++j)
+				{
+					float* p_d_ptr = pattern_diff_map_2d[j];
+					for (int i = 0; i < pattern->w; ++i)
+					{
+						float p_d = p_d_ptr[i];
+						float t_d = t[y + j][x + i] - target_mean;
+
+						//pattern_std += (p_d) * (p_d);
+						target_std += (t_d) * (t_d);
+						sum_crossed += (p_d) * (t_d);
+					}
+				}
+
+				if (fabs(target_std) < 1e-8)
+				{
+					rr[x] = 0;
+				}
+				else
+				{
+					float den = (float)sqrt(pattern_std * target_std);
+					rr[x] = sum_crossed / den;
+				}
+				// rr[x] = sum_crossed / sqrtf(pattern_std * target_std);
 			}
-
-			float target_mean = sum_target / (pattern->w * pattern->h);
-
-
-			float pattern_std = 0;
-			float target_std = 0;
-
-			float sum_crossed = 0;
-
-			for (int j = 0; j < pattern->h; ++j)
+		}
+	}
+	else
+	{
+		// if pattern_norm is too small, return
+		// to avoid division by zero
+		// set the result to zero
+		for (int j = 0; j < result->h; j++)
+		{
+			float* rrow = r[j];
+			for (int i = 0; i < result->w; i++)
 			{
-				float* p_d_ptr = pattern_diff_map_2d[j];
-				for (int i = 0; i < pattern->w; ++i)
-				{
-					float p_d = p_d_ptr[i];
-					float t_d = t[y + j][x + i] - target_mean;
-
-					pattern_std += (p_d) * (p_d);
-					target_std += (t_d) * (t_d);
-					sum_crossed += (p_d) * (t_d);
-				}
+				rrow[i] = 0;
 			}
-
-			rr[x] = sum_crossed / sqrtf(pattern_std * target_std);
 		}
 	}
 
+	
 	free(t);
 	free(p);
 	free(r);
