@@ -8,7 +8,14 @@ add_executable (NormedCrossCorrelation
     "ncc_sum.h"
     "ncc_sum.c"
     "ncc_fft.h"
-    "ncc_fft.c")
+    "ncc_fft.c"
+    "ncc_approx.h"
+    "ncc_approx.c"
+    "ncc_simd.h"
+    "ncc_simd.c"
+    "ncc_common.h"
+    "ncc_common.c"
+)
 
 add_definitions(-DTEST_IMAGE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 

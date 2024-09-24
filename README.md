@@ -5,6 +5,7 @@ This project is to learn template matching using normalized cross-correlation(NC
 1. src/NormedCrossCorrelation/ncc.c:     original version of calculating NCC 
 2. src/NormedCrossCorrelation/ncc_sum.c: optimized version of using sum table 
 3. src/NormedCrossCorrelation/ncc_fft.c: optimized version of using Fast Fourier Transfrom and sum table 
+4. src/NormedCrossCorrelation/ncc_simd.c: optimized version of using SIMD instruction 
 
 ## external libraries list:
 To read/write image format files 
